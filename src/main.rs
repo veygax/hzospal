@@ -10,10 +10,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let manager = Manager::new().await?;
     let adapters = manager.adapters().await?;
-    let central = adapters
-        .into_iter()
-        .nth(0)
-        .ok_or("No Bluetooth adapters connected")?;
+    let central = adapters.first().ok_or("No Bluetooth adapters discovered")?;
 
     let mut events = central.events().await?;
 
@@ -26,10 +23,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let peripheral = central.peripheral(&id).await?;
                 if let Some(properties) = peripheral.properties().await? {
                     if properties.services.contains(&QUEST_UUID) {
-                        let name = properties
-                            .local_name
-                            .unwrap_or_else(|| "Unknown".to_string());
+                        let name = properties.local_name.as_deref().unwrap_or("Unknown");
                         println!("Found Meta Quest: {:?}, Name: {}", id, name);
+
+                        central.stop_scan().await?;
+                        break;
                     }
                 }
             }
