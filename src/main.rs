@@ -12,6 +12,14 @@ struct QuestPeripheral {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    let quest_peripheral = scan_for_quest().await?;
+
+    ratatui::run(|terminal| app(terminal, &quest_peripheral))?;
+
+    Ok(())
+}
+
+async fn scan_for_quest() -> Result<QuestPeripheral, Box<dyn Error>> {
     const QUEST_UUID: Uuid = uuid!("0000feb8-0000-1000-8000-00805f9b34fb");
 
     let manager = Manager::new().await?;
@@ -49,13 +57,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    let qp = quest_peripheral
-        .as_ref()
-        .ok_or("Failed to find a Meta Quest")?;
-
-    ratatui::run(|terminal| app(terminal, qp))?;
-
-    Ok(())
+    quest_peripheral.ok_or_else(|| "Failed to find a Meta Quest".into())
 }
 
 fn app(terminal: &mut DefaultTerminal, quest_peripheral: &QuestPeripheral) -> std::io::Result<()> {
