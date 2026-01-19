@@ -1,4 +1,6 @@
-use btleplug::api::{Central, CentralEvent, Manager as _, Peripheral as _, ScanFilter};
+use btleplug::api::{
+    Central, CentralEvent, Characteristic, Manager as _, Peripheral as _, ScanFilter,
+};
 use btleplug::platform::{Manager, PeripheralId};
 use futures::stream::StreamExt;
 use ratatui::{DefaultTerminal, Frame};
@@ -9,6 +11,7 @@ struct QuestPeripheral {
     name: String,
     id: PeripheralId,
     rssi: i16,
+    characteristics: Vec<Characteristic>,
 }
 
 #[tokio::main]
@@ -55,7 +58,16 @@ async fn scan_for_quest(
 
                     let rssi = properties.rssi.unwrap_or(0);
 
-                    let _ = tx.send(QuestPeripheral { name, id, rssi });
+                    peripheral.connect().await?;
+                    peripheral.discover_services().await?;
+                    let characteristics = peripheral.characteristics().into_iter().collect();
+
+                    let _ = tx.send(QuestPeripheral {
+                        name,
+                        id,
+                        rssi,
+                        characteristics,
+                    });
                 }
             }
         }
@@ -89,12 +101,24 @@ fn app(
 
 fn render(frame: &mut Frame, quest_peripheral: Option<&QuestPeripheral>) {
     let text = match quest_peripheral {
-        Some(qp) => &format!(
-            "Found Meta Quest: {:?}, Name: {}, Rssi: {}",
-            qp.id, qp.name, qp.rssi
-        ),
-        None => "Scanning...",
+        Some(qp) => {
+            let mut lines = vec![
+                format!(
+                    "Found Meta Quest: {:?}, Name: {}, Rssi: {}",
+                    qp.id, qp.name, qp.rssi
+                ),
+                format!("Characteristics ({}):", qp.characteristics.len()),
+            ];
+            for (i, char) in qp.characteristics.iter().enumerate() {
+                lines.push(format!(
+                    "  {}: UUID: {}, Properties: {:?}",
+                    i, char.uuid, char.properties
+                ));
+            }
+            lines.join("\n")
+        }
+        None => "Scanning...".to_string(),
     };
 
-    frame.render_widget(text, frame.area());
+    frame.render_widget(ratatui::widgets::Paragraph::new(text), frame.area());
 }
