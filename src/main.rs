@@ -11,7 +11,8 @@ struct QuestPeripheral {
     name: String,
     id: PeripheralId,
     rssi: i16,
-    characteristics: Vec<Characteristic>,
+    ccs_characteristic: Option<Characteristic>,
+    status_characteristic: Option<Characteristic>,
 }
 
 #[tokio::main]
@@ -31,6 +32,8 @@ async fn scan_for_quest(
     tx: tokio::sync::mpsc::UnboundedSender<QuestPeripheral>,
 ) -> Result<(), Box<dyn Error>> {
     const QUEST_UUID: Uuid = uuid!("0000feb8-0000-1000-8000-00805f9b34fb");
+    const CCS_UUID: Uuid = uuid!("7a442881-509c-47fa-ac02-b06a37d9eb76");
+    const STATUS_UUID: Uuid = uuid!("7a442666-509c-47fa-ac02-b06a37d9eb76");
 
     let manager = Manager::new().await?;
     let adapters = manager.adapters().await?;
@@ -60,13 +63,21 @@ async fn scan_for_quest(
 
                     peripheral.connect().await?;
                     peripheral.discover_services().await?;
-                    let characteristics = peripheral.characteristics().into_iter().collect();
+                    let characteristics = peripheral.characteristics();
+
+                    let ccs_characteristic =
+                        characteristics.iter().find(|c| c.uuid == CCS_UUID).cloned();
+                    let status_characteristic = characteristics
+                        .iter()
+                        .find(|c| c.uuid == STATUS_UUID)
+                        .cloned();
 
                     let _ = tx.send(QuestPeripheral {
                         name,
                         id,
                         rssi,
-                        characteristics,
+                        ccs_characteristic,
+                        status_characteristic,
                     });
                 }
             }
@@ -102,19 +113,31 @@ fn app(
 fn render(frame: &mut Frame, quest_peripheral: Option<&QuestPeripheral>) {
     let text = match quest_peripheral {
         Some(qp) => {
-            let mut lines = vec![
-                format!(
-                    "Found Meta Quest: {:?}, Name: {}, Rssi: {}",
-                    qp.id, qp.name, qp.rssi
-                ),
-                format!("Characteristics ({}):", qp.characteristics.len()),
-            ];
-            for (i, char) in qp.characteristics.iter().enumerate() {
-                lines.push(format!(
-                    "  {}: UUID: {}, Properties: {:?}",
-                    i, char.uuid, char.properties
-                ));
+            let mut lines = vec![format!(
+                "Found Meta Quest: {:?}, Name: {}, Rssi: {}",
+                qp.id, qp.name, qp.rssi
+            )];
+
+            match (&qp.ccs_characteristic, &qp.status_characteristic) {
+                (Some(ccs), Some(status)) => {
+                    lines.push("Found the two target characteristics!".to_string());
+                    lines.push(format!(
+                        "CCS UUID: {}, Properties: {:?}",
+                        ccs.uuid, ccs.properties
+                    ));
+                    lines.push(format!(
+                        "Status UUID: {}, Properties: {:?}",
+                        status.uuid, status.properties
+                    ));
+                }
+                _ => {
+                    lines.push(
+                        "Failed to find the two target characteristics. Check Bluetooth setup."
+                            .to_string(),
+                    );
+                }
             }
+
             lines.join("\n")
         }
         None => "Scanning...".to_string(),
