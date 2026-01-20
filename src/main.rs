@@ -1,13 +1,14 @@
 use btleplug::api::{
     Central, CentralEvent, Characteristic, Manager as _, Peripheral as _, ScanFilter,
 };
-use btleplug::platform::{Manager, PeripheralId};
+use btleplug::platform::{Manager, Peripheral, PeripheralId};
 use futures::stream::StreamExt;
 use ratatui::{DefaultTerminal, Frame};
 use std::error::Error;
 use uuid::{Uuid, uuid};
 
 struct QuestPeripheral {
+    peripheral: Peripheral,
     name: String,
     id: PeripheralId,
     rssi: i16,
@@ -73,6 +74,7 @@ async fn scan_for_quest(
                         .cloned();
 
                     let _ = tx.send(QuestPeripheral {
+                        peripheral,
                         name,
                         id,
                         rssi,
