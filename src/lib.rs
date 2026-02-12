@@ -1,7 +1,19 @@
+// absolutely disgusting package naming but I'm just following the docs for prost-build - veygax
+pub mod com {
+    pub mod oculus {
+        pub mod companion {
+            pub mod server {
+                include!(concat!(env!("OUT_DIR"), "/com.oculus.companion.server.rs"));
+            }
+        }
+    }
+}
+
 use btleplug::api::{
     Central, CentralEvent, Characteristic, Manager as _, Peripheral as _, ScanFilter,
 };
 use btleplug::platform::{Manager, Peripheral, PeripheralId};
+use com::oculus::companion::server;
 use futures::stream::StreamExt;
 use std::error::Error;
 use uuid::{Uuid, uuid};
