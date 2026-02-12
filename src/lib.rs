@@ -1,4 +1,4 @@
-pub mod encoder;
+pub mod protocol;
 
 // absolutely disgusting package naming but I'm just following the docs for prost-build - veygax
 pub mod com {
@@ -15,7 +15,6 @@ use btleplug::api::{
     Central, CentralEvent, Characteristic, Manager as _, Peripheral as _, ScanFilter,
 };
 use btleplug::platform::{Manager, Peripheral};
-use com::oculus::companion::server;
 use futures::stream::StreamExt;
 use log::*;
 use std::error::Error;
@@ -63,7 +62,11 @@ pub async fn connect_to_quest() -> Result<Option<QuestDevice>, Box<dyn Error>> {
 
                     debug!("Found {}, {} RSSI", name, rssi);
 
+                    central.stop_scan().await?;
+
+                    debug!("Connecting to {}...", name);
                     peripheral.connect().await?;
+                    debug!("Connected.");
 
                     peripheral.discover_services().await?;
                     let characteristics = peripheral.characteristics();

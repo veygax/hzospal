@@ -1,3 +1,12 @@
+use crate::{
+    QuestDevice,
+    com::oculus::companion::server::{Method, Request},
+};
+use btleplug::api::{Peripheral, WriteType};
+use log::*;
+use prost::Message;
+use std::error::Error;
+
 pub struct PacketAssembler {
     buffer: Vec<u8>,
     next_seq: u16,
@@ -62,7 +71,7 @@ impl PacketAssembler {
     }
 }
 
-pub fn fragment_message(data: &[u8], mtu: usize) -> Vec<Vec<u8>> {
+fn fragment_message(data: &[u8], mtu: usize) -> Vec<Vec<u8>> {
     let max_ble_data = mtu.saturating_sub(3);
     let payload_size = max_ble_data.saturating_sub(2);
 
@@ -95,6 +104,38 @@ pub fn fragment_message(data: &[u8], mtu: usize) -> Vec<Vec<u8>> {
     }
 
     packets
+}
+
+pub async fn send_protobuf<T: prost::Message>(
+    protobuf: T,
+    method: Method,
+    quest: &QuestDevice,
+) -> Result<(), Box<dyn Error>> {
+    let mut proto_bytes = Vec::new();
+    protobuf.encode(&mut proto_bytes)?;
+
+    let req = Request {
+        version: Some(1),
+        method: Some(method.into()),
+        seq: Some(0),
+        body: Some(proto_bytes),
+    };
+
+    let mut req_bytes = Vec::new();
+    req.encode(&mut req_bytes)?;
+
+    let packets = fragment_message(&req_bytes, 23);
+
+    debug!("Sending {:?}, {} packets", method, packets.len());
+
+    for p in packets.iter() {
+        quest
+            .peripheral
+            .write(&quest.ccs_characteristic, p, WriteType::WithResponse)
+            .await?;
+    }
+
+    Ok(())
 }
 
 // completely llm generated tests - veygax
