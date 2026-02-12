@@ -1,7 +1,4 @@
-use crate::{
-    QuestDevice,
-    com::oculus::companion::server::Response,
-};
+use crate::{QuestDevice, com::oculus::companion::server::Response};
 use btleplug::api::Peripheral;
 use log::*;
 use prost::Message;
@@ -89,6 +86,7 @@ pub async fn receive_protobuf<T: prost::Message + Default>(
             continue;
         }
 
+        // 0xFF means the Quest has no data to give at this time, so just wait
         if data.len() == 1 && data[0] == 0xFF {
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
             continue;
