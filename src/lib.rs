@@ -1,3 +1,5 @@
+pub mod encoder;
+
 // absolutely disgusting package naming but I'm just following the docs for prost-build - veygax
 pub mod com {
     pub mod oculus {
@@ -12,23 +14,23 @@ pub mod com {
 use btleplug::api::{
     Central, CentralEvent, Characteristic, Manager as _, Peripheral as _, ScanFilter,
 };
-use btleplug::platform::{Manager, Peripheral, PeripheralId};
+use btleplug::platform::{Manager, Peripheral};
 use com::oculus::companion::server;
 use futures::stream::StreamExt;
+use log::*;
 use std::error::Error;
 use uuid::{Uuid, uuid};
+use x25519_dalek::{PublicKey, StaticSecret};
 
-#[derive(Debug)]
-pub struct QuestPeripheral {
+pub struct QuestDevice {
     pub peripheral: Peripheral,
     pub name: String,
-    pub id: PeripheralId,
-    pub rssi: i16,
-    pub ccs_characteristic: Option<Characteristic>,
-    pub status_characteristic: Option<Characteristic>,
+    pub ccs_characteristic: Characteristic,
+    pub status_characteristic: Characteristic,
+    pub x25519_keypair: (StaticSecret, PublicKey),
 }
 
-pub async fn connect_to_quest() -> Result<Option<QuestPeripheral>, Box<dyn Error>> {
+pub async fn connect_to_quest() -> Result<Option<QuestDevice>, Box<dyn Error>> {
     const QUEST_UUID: Uuid = uuid!("0000feb8-0000-1000-8000-00805f9b34fb");
     const CCS_UUID: Uuid = uuid!("7a442881-509c-47fa-ac02-b06a37d9eb76");
     const STATUS_UUID: Uuid = uuid!("7a442666-509c-47fa-ac02-b06a37d9eb76");
@@ -59,24 +61,33 @@ pub async fn connect_to_quest() -> Result<Option<QuestPeripheral>, Box<dyn Error
 
                     let rssi = properties.rssi.unwrap_or(0);
 
+                    debug!("Found {}, {} RSSI", name, rssi);
+
                     peripheral.connect().await?;
+
                     peripheral.discover_services().await?;
                     let characteristics = peripheral.characteristics();
 
-                    let ccs_characteristic =
-                        characteristics.iter().find(|c| c.uuid == CCS_UUID).cloned();
+                    let ccs_characteristic = characteristics
+                        .iter()
+                        .find(|c| c.uuid == CCS_UUID)
+                        .cloned()
+                        .ok_or("Failed to find CCS characteristic")?;
+
                     let status_characteristic = characteristics
                         .iter()
                         .find(|c| c.uuid == STATUS_UUID)
-                        .cloned();
+                        .cloned()
+                        .ok_or("Failed to find status characteristic")?;
 
-                    return Ok(Some(QuestPeripheral {
+                    let x25519_keypair: (StaticSecret, PublicKey) = generate_x25519_keypair().await;
+
+                    return Ok(Some(QuestDevice {
                         peripheral,
                         name,
-                        id,
-                        rssi,
                         ccs_characteristic,
                         status_characteristic,
+                        x25519_keypair,
                     }));
                 }
             }
@@ -84,4 +95,10 @@ pub async fn connect_to_quest() -> Result<Option<QuestPeripheral>, Box<dyn Error
     }
 
     Ok(None)
+}
+
+async fn generate_x25519_keypair() -> (StaticSecret, PublicKey) {
+    let secret_key = StaticSecret::random();
+    let public_key = PublicKey::from(&secret_key);
+    (secret_key, public_key)
 }

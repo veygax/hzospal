@@ -1,4 +1,4 @@
-use hzospal::{QuestPeripheral, connect_to_quest};
+use hzospal::{QuestDevice, connect_to_quest};
 use ratatui::{DefaultTerminal, Frame};
 use std::error::Error;
 
@@ -12,7 +12,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     //
     // ratatui::run(|terminal| app(terminal, rx))?;
 
-    let qp: QuestPeripheral = connect_to_quest().await?.ok_or("Quest not found")?;
+    let qp: QuestDevice = connect_to_quest().await?.ok_or("Quest not found")?;
 
     Ok(())
 }
