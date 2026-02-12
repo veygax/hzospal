@@ -28,9 +28,7 @@ pub struct QuestPeripheral {
     pub status_characteristic: Option<Characteristic>,
 }
 
-pub async fn scan_for_quest(
-    tx: tokio::sync::mpsc::UnboundedSender<QuestPeripheral>,
-) -> Result<(), Box<dyn Error>> {
+pub async fn connect_to_quest() -> Result<Option<QuestPeripheral>, Box<dyn Error>> {
     const QUEST_UUID: Uuid = uuid!("0000feb8-0000-1000-8000-00805f9b34fb");
     const CCS_UUID: Uuid = uuid!("7a442881-509c-47fa-ac02-b06a37d9eb76");
     const STATUS_UUID: Uuid = uuid!("7a442666-509c-47fa-ac02-b06a37d9eb76");
@@ -72,18 +70,18 @@ pub async fn scan_for_quest(
                         .find(|c| c.uuid == STATUS_UUID)
                         .cloned();
 
-                    let _ = tx.send(QuestPeripheral {
+                    return Ok(Some(QuestPeripheral {
                         peripheral,
                         name,
                         id,
                         rssi,
                         ccs_characteristic,
                         status_characteristic,
-                    });
+                    }));
                 }
             }
         }
     }
 
-    Ok(())
+    Ok(None)
 }
