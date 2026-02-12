@@ -83,7 +83,7 @@ pub async fn connect_to_quest() -> Result<Option<QuestDevice>, Box<dyn Error>> {
                         .cloned()
                         .ok_or("Failed to find status characteristic")?;
 
-                    let x25519_keypair: (StaticSecret, PublicKey) = generate_x25519_keypair().await;
+                    let x25519_keypair: (StaticSecret, PublicKey) = generate_x25519_keypair();
 
                     return Ok(Some(QuestDevice {
                         peripheral,
@@ -100,7 +100,7 @@ pub async fn connect_to_quest() -> Result<Option<QuestDevice>, Box<dyn Error>> {
     Ok(None)
 }
 
-async fn generate_x25519_keypair() -> (StaticSecret, PublicKey) {
+fn generate_x25519_keypair() -> (StaticSecret, PublicKey) {
     let secret_key = StaticSecret::random();
     let public_key = PublicKey::from(&secret_key);
     (secret_key, public_key)
