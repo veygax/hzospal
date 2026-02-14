@@ -3,7 +3,6 @@ use crate::{
     com::oculus::companion::server::{HelloRequest, HelloResponse, Method},
     protocol::{decoder::receive_protobuf, encoder::send_protobuf},
 };
-use btleplug::api::Peripheral;
 use log::*;
 use rand::Rng;
 use std::error::Error;
@@ -22,26 +21,13 @@ pub async fn say_hello(quest: &QuestDevice) -> Result<(), Box<dyn Error>> {
         ..Default::default()
     };
 
-    if !quest.peripheral.is_connected().await? {
-        return Err("Device is not connected".into());
-    }
-
     debug!("Sending HelloRequest...");
-    send_protobuf(quest, hello_request, Method::Hello).await?;
+    send_protobuf(quest, Some(hello_request), Method::Hello).await?;
 
     debug!("Waiting for HelloResponse...");
     let hello_resp = receive_protobuf::<HelloResponse>(quest).await?;
 
-    debug!("Decoded HelloResponse:");
-    debug!("  Has Signature: {}", hello_resp.signature.is_some());
-    debug!(
-        "  Cert Length: {}",
-        hello_resp
-            .server_certificate
-            .as_ref()
-            .map(|c| c.len())
-            .unwrap_or(0)
-    );
+    debug!("HelloResponse: {:#?}", hello_resp);
 
     Ok(())
 }

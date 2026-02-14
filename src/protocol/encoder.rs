@@ -44,17 +44,27 @@ fn fragment_message(data: &[u8], mtu: usize) -> Vec<Vec<u8>> {
 
 pub async fn send_protobuf<T: prost::Message>(
     quest: &QuestDevice,
-    protobuf: T,
+    protobuf: Option<T>,
     method: Method,
 ) -> Result<(), Box<dyn Error>> {
-    let mut proto_bytes = Vec::new();
-    protobuf.encode(&mut proto_bytes)?;
+    if !quest.peripheral.is_connected().await? {
+        return Err("Device is not connected".into());
+    }
+
+    let body = if let Some(proto) = protobuf {
+        let mut proto_bytes = Vec::new();
+        proto.encode(&mut proto_bytes)?;
+
+        Some(proto_bytes)
+    } else {
+        None
+    };
 
     let req = Request {
         version: Some(1),
         method: Some(method.into()),
         seq: Some(0),
-        body: Some(proto_bytes),
+        body,
     };
 
     let mut req_bytes = Vec::new();
