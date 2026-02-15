@@ -15,18 +15,21 @@ use btleplug::api::{
     Central, CentralEvent, Characteristic, Manager as _, Peripheral as _, ScanFilter,
 };
 use btleplug::platform::{Manager, Peripheral};
+use crate::protocol::functions::say_hello;
+use crypto_box::aead::OsRng;
+use crypto_box::{SalsaBox, SecretKey};
 use futures::stream::StreamExt;
 use log::*;
 use std::error::Error;
 use uuid::{Uuid, uuid};
-use x25519_dalek::{PublicKey, StaticSecret};
 
 pub struct QuestDevice {
     pub peripheral: Peripheral,
     pub name: String,
     pub ccs_characteristic: Characteristic,
     pub status_characteristic: Characteristic,
-    pub x25519_keypair: (StaticSecret, PublicKey),
+    pub x25519_keypair: (SecretKey, [u8; 32]),
+    pub crypto_box: Option<SalsaBox>,
 }
 
 pub async fn connect_to_quest() -> Result<Option<QuestDevice>, Box<dyn Error>> {
@@ -83,15 +86,20 @@ pub async fn connect_to_quest() -> Result<Option<QuestDevice>, Box<dyn Error>> {
                         .cloned()
                         .ok_or("Failed to find status characteristic")?;
 
-                    let x25519_keypair: (StaticSecret, PublicKey) = generate_x25519_keypair();
+                    let x25519_keypair: (SecretKey, [u8; 32]) = generate_x25519_keypair();
 
-                    return Ok(Some(QuestDevice {
+                    let mut device = QuestDevice {
                         peripheral,
                         name,
                         ccs_characteristic,
                         status_characteristic,
                         x25519_keypair,
-                    }));
+                        crypto_box: None,
+                    };
+
+                    say_hello(&mut device).await?;
+
+                    return Ok(Some(device));
                 }
             }
         }
@@ -100,8 +108,8 @@ pub async fn connect_to_quest() -> Result<Option<QuestDevice>, Box<dyn Error>> {
     Ok(None)
 }
 
-fn generate_x25519_keypair() -> (StaticSecret, PublicKey) {
-    let secret_key = StaticSecret::random();
-    let public_key = PublicKey::from(&secret_key);
+fn generate_x25519_keypair() -> (SecretKey, [u8; 32]) {
+    let secret_key = SecretKey::generate(&mut OsRng);
+    let public_key = secret_key.public_key().as_bytes().clone();
     (secret_key, public_key)
 }

@@ -1,5 +1,6 @@
 use crate::{QuestDevice, com::oculus::companion::server::Response};
 use btleplug::api::Peripheral;
+use crypto_box::{SalsaBox, aead::Aead};
 use log::*;
 use prost::Message;
 use std::error::Error;
@@ -95,7 +96,20 @@ pub async fn receive_protobuf<T: prost::Message + Default>(
         if let Some(full_message) = assembler.handle_notification(&data) {
             debug!("Reassembled message: {} bytes", full_message.len());
 
-            let response = Response::decode(&*full_message)?;
+            let decrypted_message = if let Some(crypto_box) = &quest.crypto_box {
+                if full_message.len() < 24 {
+                    return Err("Encrypted message too short".into());
+                }
+                let (nonce_bytes, ciphertext) = full_message.split_at(24);
+                let nonce = crypto_box::aead::Nonce::<SalsaBox>::from_slice(nonce_bytes);
+                crypto_box
+                    .decrypt(nonce, ciphertext)
+                    .map_err(|_| "Decryption failed")?
+            } else {
+                full_message
+            };
+
+            let response = Response::decode(&*decrypted_message)?;
             debug!("Response Code: {:?}", response.code);
             debug!("Response Seq: {:?}", response.seq);
 

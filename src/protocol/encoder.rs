@@ -3,6 +3,10 @@ use crate::{
     com::oculus::companion::server::{Method, Request},
 };
 use btleplug::api::{Peripheral, WriteType};
+use crypto_box::{
+    SalsaBox,
+    aead::{Aead, AeadCore, OsRng},
+};
 use log::*;
 use prost::Message;
 use std::error::Error;
@@ -70,7 +74,24 @@ pub async fn send_protobuf<T: prost::Message>(
     let mut req_bytes = Vec::new();
     req.encode(&mut req_bytes)?;
 
-    let packets = fragment_message(&req_bytes, 23);
+    // Hello is the only unencrypted method
+    let data_to_send = if method != Method::Hello {
+        let nonce = SalsaBox::generate_nonce(&mut OsRng);
+        let mut ciphertext = quest
+            .crypto_box
+            .as_ref()
+            .ok_or("No crypto_box")?
+            .encrypt(&nonce, &req_bytes[..])
+            .map_err(|_| "Encryption failed")?;
+
+        let mut data = nonce.to_vec();
+        data.append(&mut ciphertext);
+        data
+    } else {
+        req_bytes
+    };
+
+    let packets = fragment_message(&data_to_send, 23);
 
     debug!("Sending {:?}, {} packets", method, packets.len());
 
