@@ -1,7 +1,8 @@
 use crate::{
     QuestDevice,
     com::oculus::companion::server::{
-        HelloRequest, HelloResponse, HelloSignedData, HmdStatusResponse, Method,
+        AdbModeRequest, AdbModeResponse, HelloRequest, HelloResponse, HelloSignedData,
+        HmdStatusResponse, Method,
     },
     protocol::{decoder::receive_protobuf, encoder::send_protobuf},
 };
@@ -58,6 +59,19 @@ pub async fn get_hmd_status(quest: &QuestDevice) -> Result<(), Box<dyn Error>> {
     let status_resp = receive_protobuf::<HmdStatusResponse>(quest).await?;
 
     debug!("Status: {:#?}", status_resp);
+
+    Ok(())
+}
+
+pub async fn set_adb_mode(quest: &QuestDevice, mode: bool) -> Result<(), Box<dyn Error>> {
+    let adb_req = AdbModeRequest { enable: Some(mode) };
+
+    debug!("Asking to change adb mode...");
+    send_protobuf(quest, Some(adb_req), Method::AdbModeSet).await?;
+
+    let adb_resp = receive_protobuf::<AdbModeResponse>(quest).await?;
+
+    debug!("New ADB status: {:#?}", adb_resp.status);
 
     Ok(())
 }

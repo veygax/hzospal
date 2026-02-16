@@ -1,4 +1,7 @@
-use hzospal::{QuestDevice, connect_to_quest, protocol::functions::get_hmd_status};
+use hzospal::{
+    QuestDevice, connect_to_quest,
+    protocol::functions::{get_hmd_status, set_adb_mode},
+};
 //use ratatui::{DefaultTerminal, Frame};
 use std::error::Error;
 
