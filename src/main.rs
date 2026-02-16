@@ -20,6 +20,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let quest: QuestDevice = connect_to_quest().await?.ok_or("Quest not found")?;
 
     get_hmd_status(&quest).await?;
+    set_adb_mode(&quest, true).await?;
 
     Ok(())
 }

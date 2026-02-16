@@ -1,4 +1,7 @@
-use crate::{QuestDevice, com::oculus::companion::server::Response};
+use crate::{
+    QuestDevice,
+    com::oculus::companion::server::{ErrorDetails, Response, ResponseCode},
+};
 use btleplug::api::Peripheral;
 use crypto_box::{SalsaBox, aead::Aead};
 use log::*;
@@ -110,15 +113,25 @@ pub async fn receive_protobuf<T: prost::Message + Default>(
             };
 
             let response = Response::decode(&*decrypted_message)?;
-            debug!("Response Code: {:?}", response.code);
-            debug!("Response Seq: {:?}", response.seq);
 
-            if let Some(body) = response.body {
-                let msg = T::decode(&*body)?;
-                return Ok(msg);
-            } else {
-                return Err("Response body is missing".into());
+            let body = response.body.ok_or("Response is corrupt")?;
+            let seq = response.seq.ok_or("Response is corrupt")?;
+            let code = ResponseCode::try_from(response.code.ok_or("Response is corrupt")?)?;
+
+            debug!("Response Code: {:#?}", code);
+            debug!("Response Seq: {:#?}", seq);
+
+            if code == ResponseCode::Fail || code == ResponseCode::FailRetry {
+                let msg = ErrorDetails::decode(&*body)?;
+                return Err(format!(
+                    "Packet exchanged errored, code {:#?}, details: {:#?}",
+                    code, msg
+                )
+                .into());
             }
+
+            let msg = T::decode(&*body)?;
+            return Ok(msg);
         }
 
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;

@@ -46,6 +46,8 @@ fn fragment_message(data: &[u8], mtu: usize) -> Vec<Vec<u8>> {
     packets
 }
 
+use std::sync::atomic::Ordering;
+
 pub async fn send_protobuf<T: prost::Message>(
     quest: &QuestDevice,
     protobuf: Option<T>,
@@ -64,10 +66,12 @@ pub async fn send_protobuf<T: prost::Message>(
         None
     };
 
+    let seq = quest.sequence_number.fetch_add(1, Ordering::SeqCst);
+
     let req = Request {
         version: Some(1),
         method: Some(method.into()),
-        seq: Some(0),
+        seq: Some(seq),
         body,
     };
 

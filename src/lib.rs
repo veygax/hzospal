@@ -21,6 +21,7 @@ use crypto_box::{SalsaBox, SecretKey};
 use futures::stream::StreamExt;
 use log::*;
 use std::error::Error;
+use std::sync::atomic::AtomicI32;
 use uuid::{Uuid, uuid};
 
 pub struct QuestDevice {
@@ -30,6 +31,7 @@ pub struct QuestDevice {
     pub status_characteristic: Characteristic,
     pub x25519_keypair: (SecretKey, [u8; 32]),
     pub crypto_box: Option<SalsaBox>,
+    pub sequence_number: AtomicI32,
 }
 
 pub async fn connect_to_quest() -> Result<Option<QuestDevice>, Box<dyn Error>> {
@@ -95,6 +97,7 @@ pub async fn connect_to_quest() -> Result<Option<QuestDevice>, Box<dyn Error>> {
                         status_characteristic,
                         x25519_keypair,
                         crypto_box: None,
+                        sequence_number: AtomicI32::new(0),
                     };
 
                     say_hello(&mut device).await?;
