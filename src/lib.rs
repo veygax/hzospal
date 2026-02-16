@@ -11,11 +11,11 @@ pub mod com {
     }
 }
 
+use crate::protocol::functions::{authenticate_device, claim_device, say_hello};
 use btleplug::api::{
     Central, CentralEvent, Characteristic, Manager as _, Peripheral as _, ScanFilter,
 };
 use btleplug::platform::{Manager, Peripheral};
-use crate::protocol::functions::say_hello;
 use crypto_box::aead::OsRng;
 use crypto_box::{SalsaBox, SecretKey};
 use futures::stream::StreamExt;
@@ -32,9 +32,12 @@ pub struct QuestDevice {
     pub x25519_keypair: (SecretKey, [u8; 32]),
     pub crypto_box: Option<SalsaBox>,
     pub sequence_number: AtomicI32,
+    pub device_key: Option<[u8; 32]>,
 }
 
-pub async fn connect_to_quest() -> Result<Option<QuestDevice>, Box<dyn Error>> {
+pub async fn connect_to_quest(
+    device_key: Option<[u8; 32]>,
+) -> Result<Option<QuestDevice>, Box<dyn Error>> {
     const QUEST_UUID: Uuid = uuid!("0000feb8-0000-1000-8000-00805f9b34fb");
     const CCS_UUID: Uuid = uuid!("7a442881-509c-47fa-ac02-b06a37d9eb76");
     const STATUS_UUID: Uuid = uuid!("7a442666-509c-47fa-ac02-b06a37d9eb76");
@@ -90,7 +93,7 @@ pub async fn connect_to_quest() -> Result<Option<QuestDevice>, Box<dyn Error>> {
 
                     let x25519_keypair: (SecretKey, [u8; 32]) = generate_x25519_keypair();
 
-                    let mut device = QuestDevice {
+                    let mut quest = QuestDevice {
                         peripheral,
                         name,
                         ccs_characteristic,
@@ -98,11 +101,20 @@ pub async fn connect_to_quest() -> Result<Option<QuestDevice>, Box<dyn Error>> {
                         x25519_keypair,
                         crypto_box: None,
                         sequence_number: AtomicI32::new(0),
+                        device_key,
                     };
 
-                    say_hello(&mut device).await?;
+                    let challenge = say_hello(&mut quest).await?;
 
-                    return Ok(Some(device));
+                    // the Quest only returns a challenge if it's claimed
+                    match challenge {
+                        Some(c) => authenticate_device(&quest, c).await?,
+                        None => claim_device(&mut quest, device_key).await?,
+                    };
+
+                    debug!("Authenticated device!");
+
+                    return Ok(Some(quest));
                 }
             }
         }

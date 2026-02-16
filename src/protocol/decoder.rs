@@ -72,6 +72,7 @@ impl PacketAssembler {
     }
 }
 
+// Do NOT use when device does not return a response, will Error
 pub async fn receive_protobuf<T: prost::Message + Default>(
     quest: &QuestDevice,
 ) -> Result<T, Box<dyn Error>> {
@@ -114,9 +115,15 @@ pub async fn receive_protobuf<T: prost::Message + Default>(
 
             let response = Response::decode(&*decrypted_message)?;
 
-            let body = response.body.ok_or("Response is corrupt")?;
-            let seq = response.seq.ok_or("Response is corrupt")?;
-            let code = ResponseCode::try_from(response.code.ok_or("Response is corrupt")?)?;
+            let body = response.body.unwrap_or_default();
+            let seq = response
+                .seq
+                .ok_or("Response is corrupt or device did not return a response")?;
+            let code = ResponseCode::try_from(
+                response
+                    .code
+                    .ok_or("Response is corrupt or device did not return a response")?,
+            )?;
 
             debug!("Response Code: {:#?}", code);
             debug!("Response Seq: {:#?}", seq);

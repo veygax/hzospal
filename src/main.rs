@@ -1,8 +1,6 @@
-use hzospal::{
-    QuestDevice, connect_to_quest,
-    protocol::functions::{get_hmd_status, set_adb_mode},
-};
+use hzospal::{QuestDevice, connect_to_quest, protocol::functions::get_hmd_status};
 //use ratatui::{DefaultTerminal, Frame};
+use directories::ProjectDirs;
 use std::error::Error;
 
 #[tokio::main]
@@ -17,10 +15,37 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     env_logger::init();
 
-    let quest: QuestDevice = connect_to_quest().await?.ok_or("Quest not found")?;
+    let proj_dirs = ProjectDirs::from("com", "veygax", "hzospal")
+        .ok_or("Could not determine config directory")?;
+    let config_dir = proj_dirs.config_dir();
+
+    if !config_dir.exists() {
+        std::fs::create_dir_all(config_dir)?;
+    }
+
+    let key_path = config_dir.join("device_key.bin");
+
+    let device_key = if key_path.exists() {
+        let key_vec = std::fs::read(&key_path)?;
+        Some(
+            key_vec
+                .try_into()
+                .map_err(|_| "device_key.bin > 32 bytes")?,
+        )
+    } else {
+        None
+    };
+
+    let quest: QuestDevice = connect_to_quest(device_key)
+        .await?
+        .ok_or("Quest not found")?;
+
+    if let Some(key) = quest.device_key {
+        std::fs::write(&key_path, key)?;
+        println!("Saved new device key to {:?}", key_path);
+    }
 
     get_hmd_status(&quest).await?;
-    set_adb_mode(&quest, true).await?;
 
     Ok(())
 }
