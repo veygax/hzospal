@@ -46,6 +46,16 @@ pub async fn connect_to_quest(
     let adapters = manager.adapters().await?;
     let central = adapters.first().ok_or("No Bluetooth adapters discovered")?;
 
+    for peripheral in central.peripherals().await? {
+        if peripheral.is_connected().await? {
+            if let Some(properties) = peripheral.properties().await? {
+                if properties.services.contains(&QUEST_UUID) {
+                    peripheral.disconnect().await?;
+                }
+            }
+        }
+    }
+
     let mut events = central.events().await?;
 
     central.start_scan(ScanFilter::default()).await?;
