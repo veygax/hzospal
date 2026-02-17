@@ -40,9 +40,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .await?
         .ok_or("Quest not found")?;
 
-    if let Some(key) = quest.device_key {
-        std::fs::write(&key_path, key)?;
-        println!("Saved new device key to {:?}", key_path);
+    if !key_path.exists() {
+        if let Some(key) = quest.device_key {
+            std::fs::write(&key_path, key)?;
+            println!("Saved new device key to {:?}", key_path);
+        }
     }
 
     get_hmd_status(&quest).await?;

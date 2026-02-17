@@ -73,6 +73,7 @@ pub async fn send_protobuf<T: prost::Message>(
         method: Some(method.into()),
         seq: Some(seq),
         body,
+        ..Default::default()
     };
 
     let mut req_bytes = Vec::new();

@@ -4,8 +4,6 @@ package com.oculus.companion.server;
 // generated from ../CompanionServer/sources/com/oculus/companion/server/Protocol.java
 
 enum Method {
-    option allow_alias = true;
-    UNKNOWN = 0;
     PING = 0;
     HELLO = 1;
     AUTHENTICATE = 2;
@@ -36,6 +34,7 @@ enum Method {
     CONTROLLER_SCAN_AND_PAIR = 3006;
     CONTROLLER_VERIFY_CONNECTABLE = 3007;
     VERIFY_MULTIPLE_CONTROLLERS_CONNECTABLE = 3008;
+    CONTROLLER_CHECK_FOR_UPDATE = 3009;
     PIN_SET = 4001;
     PIN_STATUS = 4002;
     PIN_LOCK = 4003;
@@ -69,6 +68,7 @@ enum Method {
     GET_WIRELESS_PAIRING_DETAILS = 6019;
     REBOOT_DEVICE = 6020;
     APP_LAUNCH = 7001;
+    APP_HANDLE_REMOTE_OPERATIONS = 7002;
     HMD_STATUS = 8001;
     HMD_VERSION = 8002;
     HMD_CAPABILITIES = 8003;
@@ -76,7 +76,9 @@ enum Method {
     LOCALE_SET = 9001;
     TIME_SET = 9002;
     HEALTH_AND_SAFETY_WARNING_SET = 9101;
+    SYNC_BACKUP_PIN = 9102;
     NUX_COMPLETED = 9201;
+    NUX_SET_TWF_EXPERIMENT_GROUP = 9202;
     MIRROR_REQUEST = 10001;
     MANAGED_MODE_SET = 11001;
     MANAGED_MODE_STATUS = 11002;
@@ -99,6 +101,7 @@ enum Method {
     INPUT_EVENT_SEND = 19001;
     TOGGLE_PASSTHROUGH = 20001;
     CHANGE_BATTERY_LED_TEMPORARILY = 20002;
+    PASS_AND_TRY_STATUS = 20003;
     MANAGED_DEVICE_STATUS = 22001;
     AX_MONO_AUDIO_REQUEST = 22015;
     AX_MONO_AUDIO_RESPONSE = 22016;
@@ -125,10 +128,14 @@ enum Method {
     MANAGED_AUTO_PROVISIONING_APPS_STATUS = 24003;
     MANAGED_AUTO_PROVISIONING_FINISH = 24004;
     LOCATION_SIGNAL = 24005;
+    MANAGED_AUTO_PROVISIONING_PREPARE = 24006;
+    SECONDARY_USER_SUPPORTED_METHODS_RESPONSE = 25000;
+    DEVICE_GENERATION_ID = 25001;
+    METHOD_UNKNOWN = 99999;
 }
 
 enum ResponseCode {
-    SUCCESS = 0;
+    RESPONSE_CODE_SUCCESS = 0;
     FAIL = 1;
     FAIL_RETRY = 2;
 }
@@ -153,6 +160,7 @@ enum ErrorCode {
     WIFI_AUTH_TIMEOUT = 17;
     WIFI_IP_CONFIG_FAIL = 18;
     OPERATION_NOT_ALLOWED = 19;
+    UPDATE_REQUIRED = 20;
     BAD_PERIPHERAL_DEVICE = 30;
     BAD_PERIPHERAL_ADDRESS = 31;
     BLE_PAIRING_KEY_REQUIRED = 32;
@@ -200,6 +208,11 @@ enum ReachabilityStatus {
     ROUTER_UNREACHABLE = 4;
 }
 
+enum SkipNuxType {
+    DEFAULT = 0;
+    RETAIL = 1;
+}
+
 enum ControllerState {
     NOT_PAIRED = 1;
     PAIRED_BUT_INACTIVE = 2;
@@ -225,6 +238,8 @@ enum ControllerModel {
     STARLET = 2;
     RUBY = 3;
     COULEE = 4;
+    RUBYSE = 5;
+    RUBYBE = 6;
 }
 
 enum VerifySuccessReason {
@@ -356,22 +371,36 @@ enum Status {
 }
 
 enum ChargingStatus {
-    CHARGING_UNKNOWN = 0;
+    CHARGING_STATUS_UNKNOWN = 0;
     CHARGING = 1;
     NOT_CHARGING = 2;
 }
 
 enum ManagedAutoProvisioningStatusState {
     NOT_AVAILABLE = 1;
-    PROVISIONING_NOT_STARTED = 2;
+    MANAGED_AUTO_PROVISIONING_STATUS_STATE_NOT_STARTED = 2;
     ENROLLMENT_IN_PROGRESS = 3;
     MDM_INSTALL_IN_PROGRESS = 4;
-    PROVISIONING_SUCCESS = 5;
-    PROVISIONING_ERROR = 6;
+    MANAGED_AUTO_PROVISIONING_STATUS_STATE_SUCCESS = 5;
+    MANAGED_AUTO_PROVISIONING_STATUS_STATE_ERROR = 6;
+}
+
+enum ManagedAutoProvisioningMdmInstallState {
+    STATE_NOT_AVAILABLE = 1;
+    ENROLLMENT_CONFIG_FETCH_SUCCESS = 2;
+    ENROLLMENT_CONFIG_FETCH_ERROR = 3;
+    REQUIRED_APPS_START = 4;
+    REQUIRED_APPS_RETRYING = 5;
+    REQUIRED_APPS_SUCCESS = 6;
+    REQUIRED_APPS_ERROR = 7;
+    PROVISIONING_STARTED = 8;
+    PROVISIONING_DONE = 9;
+    PROVISIONING_ERROR = 10;
+    FINALIZATION_COMPLETED = 11;
 }
 
 enum ManagedAutoProvisioningStatusErrorCode {
-    PROVISIONING_ERROR_UNKNOWN = 1;
+    MANAGED_AUTO_PROVISIONING_STATUS_ERROR_CODE_UNKNOWN = 1;
     OTA_AVAILABLE = 2;
     WWW_ERROR = 3;
 }
@@ -379,11 +408,12 @@ enum ManagedAutoProvisioningStatusErrorCode {
 enum ManagedAutoProvisioningFinishAction {
     REBOOT = 1;
     SHUTDOWN = 2;
+    NOOP = 3;
 }
 
 enum ManagedAutoProvisioningAppStatus {
     UNSUPPORTED = 1;
-    APP_STATUS_UNKNOWN = 2;
+    MANAGED_AUTO_PROVISIONING_APP_STATUS_UNKNOWN = 2;
     ENTITLED = 3;
     INCOMPATIBLE = 4;
     DOWNLOAD_QUEUED = 5;
@@ -394,13 +424,13 @@ enum ManagedAutoProvisioningAppStatus {
 }
 
 enum OtaStatus {
-    OTA_UNKNOWN = 0;
-    OTA_NOT_STARTED = 1;
+    OTA_STATUS_UNKNOWN = 0;
+    OTA_STATUS_NOT_STARTED = 1;
     UPDATE_IN_PROGRESS = 2;
     VERIFYING_UPDATE = 3;
     FINALIZING_UPDATE = 4;
     READY_TO_REBOOT = 5;
-    OTA_ERROR = 6;
+    OTA_STATUS_ERROR = 6;
 }
 
 enum OtaStatusErrorCode {
@@ -430,11 +460,11 @@ message AppLaunchResponse {
 }
 
 message AudioBalanceRequest {
-    optional int32 audiobalance = 1;
+    optional bytes audiobalance = 1;
 }
 
 message AudioBalanceResponse {
-    optional int32 audiobalance = 1;
+    optional bytes audiobalance = 1;
 }
 
 message AuthenticateRequest {
@@ -494,11 +524,11 @@ message BlePairingKey {
 }
 
 message BoostHeightRequest {
-    optional bool boostheight = 1;
+    optional bytes boostheight = 1;
 }
 
 message BoostHeightResponse {
-    optional bool boostheight = 1;
+    optional bytes boostheight = 1;
 }
 
 message CastDevice {
@@ -531,19 +561,19 @@ message CloudSyncSignalSend {
 }
 
 message ColorCorrectionEnabledRequest {
-    optional bool colorcorrectionenabled = 1;
+    optional bytes colorcorrectionenabled = 1;
 }
 
 message ColorCorrectionEnabledResponse {
-    optional bool colorcorrectionenabled = 1;
+    optional bytes colorcorrectionenabled = 1;
 }
 
 message ColorCorrectionValueRequest {
-    optional int32 colorcorrectionvalue = 1;
+    optional bytes colorcorrectionvalue = 1;
 }
 
 message ColorCorrectionValueResponse {
-    optional int32 colorcorrectionvalue = 1;
+    optional bytes colorcorrectionvalue = 1;
 }
 
 message CombinedSetAccessTokenRequest {
@@ -556,14 +586,18 @@ message CombinedSetAccessTokenRequest {
 }
 
 message Controller {
-    optional string id = 1;
-    optional string display_name = 2;
-    optional ControllerState state = 3;
-    optional int32 battery_level = 4;
-    optional ControllerType type = 5;
-    optional int32 rssi = 7;
-    optional string firmware_version = 8;
-    optional ControllerModel model = 9;
+    optional bytes id = 1;
+    optional bytes display_name = 2;
+    optional bytes state = 3;
+    optional bytes battery_level = 4;
+    optional bytes type = 5;
+    optional bytes rssi = 7;
+    optional bytes firmware_version = 8;
+    optional bytes model = 9;
+}
+
+message ControllerCheckForUpdateRequest {
+    optional Controller controller = 1;
 }
 
 message ControllerDetectionState {
@@ -616,11 +650,11 @@ message ControllerVerifyConnectableRequest {
 }
 
 message ControllerVibrationRequest {
-    optional int32 controllervibration = 1;
+    optional bytes controllervibration = 1;
 }
 
 message ControllerVibrationResponse {
-    optional int32 controllervibration = 1;
+    optional bytes controllervibration = 1;
 }
 
 message CrashReportsEnabledRequest {
@@ -645,16 +679,20 @@ message DevelopmentLicenseDetailsResponse {
     optional bool revoked = 3;
 }
 
+message DeviceGenerationIdResponse {
+    optional bytes device_generation_id = 1;
+}
+
 message DiscoverCastingDevicesResponse {
     repeated CastDevice device = 1;
 }
 
 message DisplayContrastRequest {
-    optional int32 displaycontrast = 1;
+    optional bytes displaycontrast = 1;
 }
 
 message DisplayContrastResponse {
-    optional int32 displaycontrast = 1;
+    optional bytes displaycontrast = 1;
 }
 
 message ErrorDetails {
@@ -752,6 +790,7 @@ message HmdStatusResponse {
     optional bool hsw_completed = 71;
     optional bool nux_completed = 72;
     optional NuxStatus nux_status = 73;
+    optional bool nux_twf_active = 74;
     optional HeadsetState headset_state = 81;
     optional ProvisionType provision_type = 91;
     optional string provisioned_serial = 92;
@@ -814,8 +853,8 @@ message LocaleSet {
 message LocationSignal {
     optional float latitude = 1;
     optional float longitude = 2;
-    optional float locationaccuracy = 3;
-    optional float magdeclination = 4;
+    optional bytes locationaccuracy = 3;
+    optional bytes magdeclination = 4;
 }
 
 message ManagedAutoProvisioningAppInstallStatus {
@@ -824,6 +863,8 @@ message ManagedAutoProvisioningAppInstallStatus {
     optional int64 download_size_bytes = 3;
     optional int64 downloaded_size_bytes = 4;
     optional string display_name = 5;
+    optional int64 version_code = 6;
+    optional string version_name = 7;
 }
 
 message ManagedAutoProvisioningAppsStatusResponse {
@@ -839,12 +880,18 @@ message ManagedAutoProvisioningStartRequest {
     optional string enrollment_token = 1;
     optional bool install_mdm = 2;
     optional bool pause_guardian = 3;
+    optional bool shared_mode_wait = 4;
+    optional bool skip_ota = 5;
+    optional bool launch_nux_directly = 6;
+    optional bool persist_params = 7;
 }
 
 message ManagedAutoProvisioningStatusResponse {
     optional ManagedAutoProvisioningStatusState state = 1;
     optional ManagedAutoProvisioningStatusErrorCode error_code = 2;
     optional int32 www_error_code = 3;
+    optional ManagedAutoProvisioningMdmInstallState mdm_install_state = 4;
+    optional int32 sensor_lock_state = 5;
 }
 
 message ManagedDeviceStatusResponse {
@@ -893,11 +940,11 @@ message MirrorResponse {
 }
 
 message MonoAudioRequest {
-    optional int32 monoaudio = 1;
+    optional bytes monoaudio = 1;
 }
 
 message MonoAudioResponse {
-    optional int32 monoaudio = 1;
+    optional bytes monoaudio = 1;
 }
 
 message MtpModeRequest {
@@ -909,6 +956,10 @@ message MtpModeResponse {
 }
 
 message NameSetRequest {
+    optional string name = 1;
+}
+
+message NuxSetTwfExperimentGroupRequest {
     optional string name = 1;
 }
 
@@ -958,6 +1009,10 @@ message OtaEnabledResponse {
 
 message OtaManualUpdateRequest {
     optional bool full_ota = 1;
+}
+
+message PassAndTryStatusResponse {
+    optional bool isactive = 1;
 }
 
 message PhoneNotificationRequest {
@@ -1012,11 +1067,17 @@ message PinVerifyResponse {
     optional int32 tries_left = 3;
 }
 
+message RebootDeviceRequest {
+    optional string reason = 1;
+}
+
 message Request {
     optional int32 version = 1;
     optional Method method = 2;
     optional int32 seq = 3;
     optional bytes body = 4;
+    optional string device_address = 5;
+    optional int64 connection_session = 6;
 }
 
 message Response {
@@ -1025,12 +1086,18 @@ message Response {
     optional bytes body = 3;
 }
 
+message SecondaryUserSupportedMethodsResponse {
+    optional bytes supportedmethod = 1;
+}
+
 message SkipNuxAndLoginRequest {
     optional string email = 1;
     optional string password = 2;
     optional bool disable_guardian = 3;
     optional bool get_status = 4;
     optional bool do_not_disturb = 5;
+    optional SkipNuxType skip_nux_type = 6;
+    optional bool reboot = 7;
 }
 
 message SkipNuxAndLoginResponse {
@@ -1059,6 +1126,10 @@ message SwitchOculusMenuButtonRequest {
 
 message SwitchOculusMenuButtonResponse {
     optional bool enabled = 1;
+}
+
+message SyncBackupPinRequest {
+    optional string pin = 1;
 }
 
 message SystemUnlockRequest {
