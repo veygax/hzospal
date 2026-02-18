@@ -2,8 +2,10 @@ use crate::{
     QuestDevice,
     com::oculus::companion::server::{
         AdbModeRequest, AdbModeResponse, AuthenticateRequest, CombinedSetAccessTokenRequest,
-        HelloRequest, HelloResponse, HelloSignedData, HmdStatusResponse, Method,
-        OculusSetUserSecretRequest,
+        DevModeRequest, DevModeResponse, HelloRequest, HelloResponse, HelloSignedData,
+        HmdStatusResponse, ManagedAutoProvisioningStartRequest, Method, OculusSetUserSecretRequest,
+        OtaEnabledRequest, OtaEnabledResponse, SkipNuxAndLoginRequest, SkipNuxAndLoginResponse,
+        SkipNuxType,
     },
     protocol::{decoder::receive_protobuf, encoder::send_protobuf},
 };
@@ -122,22 +124,48 @@ pub async fn get_hmd_status(quest: &QuestDevice) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub async fn set_adb_mode(quest: &QuestDevice, mode: bool) -> Result<(), Box<dyn Error>> {
-    let adb_req = AdbModeRequest { enable: Some(mode) };
-    debug!("Asking to change adb mode...");
-    send_protobuf(quest, Some(adb_req), Method::AdbModeSet).await?;
+pub async fn set_dev_mode(quest: &QuestDevice, mode: bool) -> Result<(), Box<dyn Error>> {
+    let dev_req = DevModeRequest {
+        mode: Some(mode.into()),
+    };
+    debug!("Asking to change dev mode to {}", mode);
+    send_protobuf(quest, Some(dev_req), Method::DevModeSet).await?;
 
-    let adb_resp = receive_protobuf::<AdbModeResponse>(quest).await?;
+    // this does not say whether it was changed
+    receive_protobuf::<()>(quest).await?;
 
-    debug!("New ADB status: {:#?}", adb_resp.status);
+    send_protobuf::<()>(quest, None, Method::DevModeStatus).await?;
+
+    let dev_resp = receive_protobuf::<DevModeResponse>(quest).await?;
+
+    debug!("Dev mode is now: {:#?}", dev_resp.status);
+
+    Ok(())
+}
+
+pub async fn set_ota_mode(quest: &QuestDevice, mode: bool) -> Result<(), Box<dyn Error>> {
+    let ota_req = OtaEnabledRequest { enable: Some(mode) };
+    debug!("Asking to change OTA mode to {}", mode);
+    send_protobuf(quest, Some(ota_req), Method::OtaEnabledSet).await?;
+
+    // this does not say whether it was changed
+    receive_protobuf::<()>(quest).await?;
+
+    send_protobuf::<()>(quest, None, Method::OtaEnabledStatus).await?;
+
+    let ota_resp = receive_protobuf::<OtaEnabledResponse>(quest).await?;
+
+    debug!("OTA updates are now: {:#?}", ota_resp.enabled);
 
     Ok(())
 }
 
 pub async fn skip_nux(quest: &QuestDevice) -> Result<(), Box<dyn Error>> {
     let token_req = CombinedSetAccessTokenRequest {
-        user_id: Some("1".to_string()),
-        user_id_meta: Some("1".to_string()),
+        access_token_meta: Some("VEYGAX_HZOSPAL".into()),
+        access_token_horizon_profile: Some("VEYGAX_HZOSPAL".into()),
+        user_id: Some(1.to_string()),
+        user_id_meta: Some(1.to_string()),
         ..Default::default()
     };
 
@@ -147,6 +175,39 @@ pub async fn skip_nux(quest: &QuestDevice) -> Result<(), Box<dyn Error>> {
     let token_resp = receive_protobuf::<()>(quest).await?;
 
     debug!("Response to changing token: {:#?}", token_resp);
+
+    debug!("Skipping NUX...");
+
+    let nux_req = SkipNuxAndLoginRequest {
+        skip_nux_type: Some(SkipNuxType::Default.into()),
+        reboot: Some(false),
+        do_not_disturb: Some(false),
+        get_status: Some(false),
+        disable_guardian: Some(false),
+        ..Default::default()
+    };
+
+    send_protobuf(quest, Some(nux_req), Method::RetailSkipFirstTimeNux).await?;
+
+    receive_protobuf::<()>(quest).await?;
+
+    debug!("Waiting for NUX to finish skipping...");
+
+    loop {
+        let nux_req = SkipNuxAndLoginRequest {
+            get_status: Some(true),
+            ..Default::default()
+        };
+
+        send_protobuf(quest, Some(nux_req), Method::RetailSkipFirstTimeNux).await?;
+
+        let resp = receive_protobuf::<SkipNuxAndLoginResponse>(quest).await?;
+        if resp.status == Some(0) {
+            break;
+        }
+    }
+
+    debug!("NUX skipped!");
 
     Ok(())
 }

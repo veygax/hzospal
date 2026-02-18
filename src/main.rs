@@ -1,4 +1,7 @@
-use hzospal::{QuestDevice, connect_to_quest, protocol::functions::get_hmd_status};
+use hzospal::{
+    QuestDevice, connect_to_quest,
+    protocol::functions::{get_hmd_status, set_dev_mode, set_ota_mode, skip_nux},
+};
 //use ratatui::{DefaultTerminal, Frame};
 use directories::ProjectDirs;
 use std::error::Error;
@@ -48,6 +51,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     get_hmd_status(&quest).await?;
+    // skip_nux(&quest).await?;
+
+    set_dev_mode(&quest, true).await?;
+    set_ota_mode(&quest, false).await?;
 
     Ok(())
 }
