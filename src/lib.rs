@@ -1,9 +1,10 @@
 pub mod protocol;
 
 // absolutely disgusting package naming but I'm just following the docs for prost-build - veygax
-pub mod com {
+pub(crate) mod com {
     pub mod oculus {
         pub mod companion {
+            #[allow(dead_code)]
             pub mod server {
                 include!(concat!(env!("OUT_DIR"), "/com.oculus.companion.server.rs"));
             }

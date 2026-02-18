@@ -1,14 +1,15 @@
 use crate::{
     QuestDevice,
     com::oculus::companion::server::{
-        AdbModeRequest, AdbModeResponse, AuthenticateRequest, CombinedSetAccessTokenRequest,
-        DevModeRequest, DevModeResponse, HelloRequest, HelloResponse, HelloSignedData,
-        HmdStatusResponse, ManagedAutoProvisioningStartRequest, Method, OculusSetUserSecretRequest,
-        OtaEnabledRequest, OtaEnabledResponse, SkipNuxAndLoginRequest, SkipNuxAndLoginResponse,
-        SkipNuxType,
+        AuthenticateRequest, CombinedSetAccessTokenRequest, DevModeRequest, DevModeResponse,
+        HelloRequest, HelloResponse, HelloSignedData, HmdStatusResponse, Method,
+        OculusSetUserSecretRequest, OtaEnabledRequest, OtaEnabledResponse, SkipNuxAndLoginRequest,
+        SkipNuxAndLoginResponse, SkipNuxType, WifiConnectRequest,
     },
     protocol::{decoder::receive_protobuf, encoder::send_protobuf},
 };
+
+pub use crate::com::oculus::companion::server::WifiAuthentication;
 use crypto_box::{PublicKey, SalsaBox};
 use hmac::{Hmac, Mac};
 use log::*;
@@ -208,6 +209,29 @@ pub async fn skip_nux(quest: &QuestDevice) -> Result<(), Box<dyn Error>> {
     }
 
     debug!("NUX skipped!");
+
+    Ok(())
+}
+
+pub async fn connect_to_wifi(
+    quest: &QuestDevice,
+    ssid: String,
+    password: String,
+    auth: WifiAuthentication,
+) -> Result<(), Box<dyn Error>> {
+    let wifi_req = WifiConnectRequest {
+        ssid: Some(ssid),
+        password: Some(password),
+        auth: Some(auth.into()),
+        ..Default::default()
+    };
+
+    debug!("Connecting to WiFi...");
+    send_protobuf(quest, Some(wifi_req), Method::WifiConnect).await?;
+
+    receive_protobuf::<()>(quest).await?;
+
+    debug!("Connected to WiFi!");
 
     Ok(())
 }
