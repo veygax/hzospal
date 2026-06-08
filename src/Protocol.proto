@@ -588,12 +588,12 @@ message CombinedSetAccessTokenRequest {
 message Controller {
     optional bytes id = 1;
     optional bytes display_name = 2;
-    optional bytes state = 3;
-    optional bytes battery_level = 4;
-    optional bytes type = 5;
-    optional bytes rssi = 7;
+    optional int32 state = 3;
+    optional int32 battery_level = 4;
+    optional ControllerType type = 5;
+    optional int32 rssi = 7;
     optional bytes firmware_version = 8;
-    optional bytes model = 9;
+    optional ControllerModel model = 9;
 }
 
 message ControllerCheckForUpdateRequest {

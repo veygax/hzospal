@@ -21,9 +21,15 @@ use crypto_box::aead::OsRng;
 use crypto_box::{SalsaBox, SecretKey};
 use futures::stream::StreamExt;
 use log::*;
+use std::collections::HashSet;
 use std::error::Error;
 use std::sync::atomic::AtomicI32;
+use std::time::Duration;
 use uuid::{Uuid, uuid};
+
+const QUEST_UUID: Uuid = uuid!("0000feb8-0000-1000-8000-00805f9b34fb");
+const CCS_UUID: Uuid = uuid!("7a442881-509c-47fa-ac02-b06a37d9eb76");
+const STATUS_UUID: Uuid = uuid!("7a442666-509c-47fa-ac02-b06a37d9eb76");
 
 pub struct QuestDevice {
     pub peripheral: Peripheral,
@@ -36,13 +42,138 @@ pub struct QuestDevice {
     pub device_key: Option<[u8; 32]>,
 }
 
+pub struct QuestPeripheral {
+    pub peripheral: Peripheral,
+    pub id: String,
+    pub name: String,
+    pub rssi: i16,
+}
+
+pub async fn scan_quest_peripherals(
+    duration: Duration,
+) -> Result<Vec<QuestPeripheral>, Box<dyn Error>> {
+    let manager = Manager::new().await?;
+    let adapters = manager.adapters().await?;
+    let central = adapters.first().ok_or("No Bluetooth adapters discovered")?;
+
+    let mut events = central.events().await?;
+    let mut seen = HashSet::new();
+    let mut quests = Vec::new();
+
+    central.start_scan(ScanFilter::default()).await?;
+
+    let scan_until = tokio::time::sleep(duration);
+    tokio::pin!(scan_until);
+
+    loop {
+        tokio::select! {
+            _ = &mut scan_until => break,
+            event = events.next() => {
+                let Some(event) = event else {
+                    break;
+                };
+
+                let id = match event {
+                    CentralEvent::DeviceDiscovered(id) => id,
+                    CentralEvent::DeviceUpdated(id) => id,
+                    _ => continue,
+                };
+
+                if let Ok(peripheral) = central.peripheral(&id).await {
+                    if let Some(properties) = peripheral.properties().await? {
+                        if properties.services.contains(&QUEST_UUID) {
+                            let id = peripheral.id().to_string();
+                            if !seen.insert(id.clone()) {
+                                continue;
+                            }
+
+                            let name = properties
+                                .local_name
+                                .as_deref()
+                                .unwrap_or("Unknown Quest")
+                                .to_string();
+                            let rssi = properties.rssi.unwrap_or(0);
+
+                            debug!("Found {}, {} RSSI", name, rssi);
+
+                            quests.push(QuestPeripheral {
+                                peripheral,
+                                id,
+                                name,
+                                rssi,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    central.stop_scan().await?;
+
+    Ok(quests)
+}
+
+pub async fn connect_quest_peripheral(
+    quest_peripheral: QuestPeripheral,
+    device_key: Option<[u8; 32]>,
+) -> Result<QuestDevice, Box<dyn Error>> {
+    let QuestPeripheral {
+        peripheral, name, ..
+    } = quest_peripheral;
+
+    if peripheral.is_connected().await? {
+        peripheral.disconnect().await?;
+    }
+
+    debug!("Connecting to {}...", name);
+    peripheral.connect().await?;
+    debug!("Connected.");
+
+    peripheral.discover_services().await?;
+    let characteristics = peripheral.characteristics();
+
+    let ccs_characteristic = characteristics
+        .iter()
+        .find(|c| c.uuid == CCS_UUID)
+        .cloned()
+        .ok_or("Failed to find CCS characteristic")?;
+
+    let status_characteristic = characteristics
+        .iter()
+        .find(|c| c.uuid == STATUS_UUID)
+        .cloned()
+        .ok_or("Failed to find status characteristic")?;
+
+    let x25519_keypair: (SecretKey, [u8; 32]) = generate_x25519_keypair();
+
+    let mut quest = QuestDevice {
+        peripheral,
+        name,
+        ccs_characteristic,
+        status_characteristic,
+        x25519_keypair,
+        crypto_box: None,
+        sequence_number: AtomicI32::new(0),
+        device_key,
+    };
+
+    let challenge = say_hello(&mut quest).await?;
+
+    // the Quest only returns a challenge if it's claimed
+    match challenge {
+        Some(c) => authenticate_device(&quest, c).await?,
+        None => claim_device(&mut quest, device_key).await?,
+    };
+
+    debug!("Authenticated device!");
+
+    Ok(quest)
+}
+
 pub async fn connect_to_quest(
     device_key: Option<[u8; 32]>,
 ) -> Result<Option<QuestDevice>, Box<dyn Error>> {
-    const QUEST_UUID: Uuid = uuid!("0000feb8-0000-1000-8000-00805f9b34fb");
-    const CCS_UUID: Uuid = uuid!("7a442881-509c-47fa-ac02-b06a37d9eb76");
-    const STATUS_UUID: Uuid = uuid!("7a442666-509c-47fa-ac02-b06a37d9eb76");
-
     let manager = Manager::new().await?;
     let adapters = manager.adapters().await?;
     let central = adapters.first().ok_or("No Bluetooth adapters discovered")?;
@@ -82,48 +213,16 @@ pub async fn connect_to_quest(
                     debug!("Found {}, {} RSSI", name, rssi);
 
                     central.stop_scan().await?;
-
-                    debug!("Connecting to {}...", name);
-                    peripheral.connect().await?;
-                    debug!("Connected.");
-
-                    peripheral.discover_services().await?;
-                    let characteristics = peripheral.characteristics();
-
-                    let ccs_characteristic = characteristics
-                        .iter()
-                        .find(|c| c.uuid == CCS_UUID)
-                        .cloned()
-                        .ok_or("Failed to find CCS characteristic")?;
-
-                    let status_characteristic = characteristics
-                        .iter()
-                        .find(|c| c.uuid == STATUS_UUID)
-                        .cloned()
-                        .ok_or("Failed to find status characteristic")?;
-
-                    let x25519_keypair: (SecretKey, [u8; 32]) = generate_x25519_keypair();
-
-                    let mut quest = QuestDevice {
-                        peripheral,
-                        name,
-                        ccs_characteristic,
-                        status_characteristic,
-                        x25519_keypair,
-                        crypto_box: None,
-                        sequence_number: AtomicI32::new(0),
+                    let quest = connect_quest_peripheral(
+                        QuestPeripheral {
+                            peripheral,
+                            id: id.to_string(),
+                            name,
+                            rssi,
+                        },
                         device_key,
-                    };
-
-                    let challenge = say_hello(&mut quest).await?;
-
-                    // the Quest only returns a challenge if it's claimed
-                    match challenge {
-                        Some(c) => authenticate_device(&quest, c).await?,
-                        None => claim_device(&mut quest, device_key).await?,
-                    };
-
-                    debug!("Authenticated device!");
+                    )
+                    .await?;
 
                     return Ok(Some(quest));
                 }

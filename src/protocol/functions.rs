@@ -2,14 +2,16 @@ use crate::{
     QuestDevice,
     com::oculus::companion::server::{
         AuthenticateRequest, CombinedSetAccessTokenRequest, DevModeRequest, DevModeResponse,
-        HelloRequest, HelloResponse, HelloSignedData, HmdStatusResponse, Method,
-        OculusSetUserSecretRequest, OtaEnabledRequest, OtaEnabledResponse, SkipNuxAndLoginRequest,
-        SkipNuxAndLoginResponse, SkipNuxType, WifiConnectRequest,
+        HelloRequest, HelloResponse, HelloSignedData, Method, OculusSetUserSecretRequest,
+        OtaEnabledRequest, OtaEnabledResponse, SkipNuxAndLoginRequest, SkipNuxAndLoginResponse,
+        SkipNuxType, WifiConnectRequest, ControllerStatusRequest,
     },
     protocol::{decoder::receive_protobuf, encoder::send_protobuf},
 };
 
-pub use crate::com::oculus::companion::server::WifiAuthentication;
+pub use crate::com::oculus::companion::server::{
+    HmdStatusResponse, WifiAuthentication, ControllerStatusResponse,
+};
 use crypto_box::{PublicKey, SalsaBox};
 use hmac::{Hmac, Mac};
 use log::*;
@@ -113,7 +115,24 @@ pub(crate) async fn authenticate_device(
     Ok(())
 }
 
-pub async fn get_hmd_status(quest: &QuestDevice) -> Result<(), Box<dyn Error>> {
+pub async fn get_controller_status(
+    quest: &QuestDevice,
+) -> Result<ControllerStatusResponse, Box<dyn Error>> {
+    debug!("Asking for controller status...");
+    let req = ControllerStatusRequest {
+        timeout_ms: Some(2000),
+    };
+    send_protobuf(quest, Some(req), Method::ControllerStatus).await?;
+
+    debug!("Waiting for controller status...");
+    let status_resp = receive_protobuf::<ControllerStatusResponse>(quest).await?;
+
+    debug!("Controller status: {:#?}", status_resp);
+
+    Ok(status_resp)
+}
+
+pub async fn get_hmd_status(quest: &QuestDevice) -> Result<HmdStatusResponse, Box<dyn Error>> {
     debug!("Asking for status...");
     send_protobuf::<()>(quest, None, Method::HmdStatus).await?;
 
@@ -122,10 +141,20 @@ pub async fn get_hmd_status(quest: &QuestDevice) -> Result<(), Box<dyn Error>> {
 
     debug!("Status: {:#?}", status_resp);
 
-    Ok(())
+    Ok(status_resp)
 }
 
-pub async fn set_dev_mode(quest: &QuestDevice, mode: bool) -> Result<(), Box<dyn Error>> {
+pub async fn get_dev_mode_status(quest: &QuestDevice) -> Result<Option<bool>, Box<dyn Error>> {
+    send_protobuf::<()>(quest, None, Method::DevModeStatus).await?;
+
+    let dev_resp = receive_protobuf::<DevModeResponse>(quest).await?;
+
+    debug!("Dev mode is now: {:#?}", dev_resp.status);
+
+    Ok(dev_resp.status.map(|status| status != 0))
+}
+
+pub async fn set_dev_mode(quest: &QuestDevice, mode: bool) -> Result<Option<bool>, Box<dyn Error>> {
     let dev_req = DevModeRequest {
         mode: Some(mode.into()),
     };
@@ -135,16 +164,20 @@ pub async fn set_dev_mode(quest: &QuestDevice, mode: bool) -> Result<(), Box<dyn
     // this does not say whether it was changed
     receive_protobuf::<()>(quest).await?;
 
-    send_protobuf::<()>(quest, None, Method::DevModeStatus).await?;
-
-    let dev_resp = receive_protobuf::<DevModeResponse>(quest).await?;
-
-    debug!("Dev mode is now: {:#?}", dev_resp.status);
-
-    Ok(())
+    get_dev_mode_status(quest).await
 }
 
-pub async fn set_ota_mode(quest: &QuestDevice, mode: bool) -> Result<(), Box<dyn Error>> {
+pub async fn get_ota_mode_status(quest: &QuestDevice) -> Result<Option<bool>, Box<dyn Error>> {
+    send_protobuf::<()>(quest, None, Method::OtaEnabledStatus).await?;
+
+    let ota_resp = receive_protobuf::<OtaEnabledResponse>(quest).await?;
+
+    debug!("OTA updates are now: {:#?}", ota_resp.enabled);
+
+    Ok(ota_resp.enabled)
+}
+
+pub async fn set_ota_mode(quest: &QuestDevice, mode: bool) -> Result<Option<bool>, Box<dyn Error>> {
     let ota_req = OtaEnabledRequest { enable: Some(mode) };
     debug!("Asking to change OTA mode to {}", mode);
     send_protobuf(quest, Some(ota_req), Method::OtaEnabledSet).await?;
@@ -152,13 +185,7 @@ pub async fn set_ota_mode(quest: &QuestDevice, mode: bool) -> Result<(), Box<dyn
     // this does not say whether it was changed
     receive_protobuf::<()>(quest).await?;
 
-    send_protobuf::<()>(quest, None, Method::OtaEnabledStatus).await?;
-
-    let ota_resp = receive_protobuf::<OtaEnabledResponse>(quest).await?;
-
-    debug!("OTA updates are now: {:#?}", ota_resp.enabled);
-
-    Ok(())
+    get_ota_mode_status(quest).await
 }
 
 pub async fn skip_nux(quest: &QuestDevice) -> Result<(), Box<dyn Error>> {
